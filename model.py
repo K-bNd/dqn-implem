@@ -1,0 +1,37 @@
+from torch import nn
+from torch.optim import RMSprop
+
+from hyperparameters import RMS_ESP, RMS_GRADIENT_MOMENTUM, RMS_LEARNING_RATE
+
+class CNN(nn.Module):
+    def __init__(self, game_inputs=4):
+        super().__init__()
+
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=8, stride=4),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU(inplace=True),
+        )
+
+        self.fc1 = nn.Linear(4 * 4 * 64, 512)
+        self.act = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(512, game_inputs)
+        self.optim = RMSprop(self.cnn.parameters(), lr=RMS_LEARNING_RATE,
+                             momentum=RMS_GRADIENT_MOMENTUM,
+                             eps=RMS_ESP)
+        self.loss_fn = nn.MSELoss()
+
+    def forward(self, x):
+        x = self.cnn(x)
+        b, c, h, w = x.shape
+        x = x.view(b, c * h * w)
+        x = nn.Flatten()
+        x = self.act(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    
+    def train(self, target_model: CNN) -> T:
+        # TODO : implement train function
