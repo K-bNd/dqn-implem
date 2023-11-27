@@ -118,13 +118,11 @@ class DQN:
         """
         Trains the model and logs both game_reward and total_reward at the end of training.
         """
-        total_reward: typing.SupportsFloat = 0.0
         state, _ = self.env.reset(seed=RANDOM_SEED)
         state = get_tensor_from_state(state, self.compute_device)
-        for _ in range(epochs):
+        for epoch in range(epochs):
             game_reward: typing.SupportsFloat = 0.0
             for t in range(t_max):
-                print(t)
                 action = self.get_action(state)
                 new_state, reward, term, trunc, _ = self.env.step(
                     action.item())
@@ -142,11 +140,9 @@ class DQN:
                     self.target_model.load_state_dict(self.model.state_dict())
 
                 if term or trunc:
+                    print(f"epoch: {epoch} / {epochs}, score: {game_reward}")
                     state, _ = self.env.reset(seed=RANDOM_SEED)
                     state = get_tensor_from_state(state, self.compute_device)
                     break
                 state = new_state
-            total_reward += game_reward
             wandb.log({"game_reward": game_reward})
-
-        wandb.log({"total_reward": total_reward})
