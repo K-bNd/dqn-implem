@@ -1,7 +1,7 @@
 from torch import nn
 from torch.optim import RMSprop
 from hyperparameters import RMS_ESP, RMS_GRADIENT_MOMENTUM, RMS_LEARNING_RATE
-
+import wandb
 
 class CNN(nn.Module):
     """
@@ -45,6 +45,7 @@ class CNN(nn.Module):
         Backwards propagation function
         """
         loss = self.loss_fn(preds, expected_values)
+        wandb.log({"loss": loss})
         self.optim.zero_grad()
         loss.backward()
         nn.utils.clip_grad_value_(self.parameters(), 100)
