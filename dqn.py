@@ -1,17 +1,15 @@
 import random
 import typing
-from copy import deepcopy
+from math import exp
+import torch
 
-import numpy as np
 from gymnasium import Env
-import wandb
-
-from hyperparameters import MAX_EPOCHS, MAX_ACTION, REPLAY_SIZE, DISCOUNT_FACTOR, UPDATE_FREQUENCY
+from hyperparameters import MAX_EPOCHS, MAX_ACTION, REPLAY_SIZE, GAMMA, \
+    UPDATE_FREQUENCY, RANDOM_SEED, MINIBATCH_SIZE
 from model import CNN
-from replay_memory import ReplayMemory
+from utils import Action, State, Memory, ReplayMemory, get_tensor_from_state
 
-Action = int
-State = np.ndarray
+import wandb
 
 
 class DQN:
@@ -22,12 +20,12 @@ class DQN:
     def __init__(
         self,
         env: Env,
+        compute_device: torch.device,
         replay_size: int = REPLAY_SIZE,
-        learning_rate: float = 1.0,
-        gamma: float = DISCOUNT_FACTOR,
+        gamma: float = GAMMA,
         epsilon_start: float = 1.0,
         epsilon_end: float = 0.1,
-        epsilon_decay_steps: int = 10000
+        epsilon_decay_steps: int = 10000,
     ):
         """
         DQN Implementation
@@ -36,62 +34,66 @@ class DQN:
         self.env = env
         self.action_space = env.action_space
         self.observation_space = env.observation_space
-        self.learning_rate = learning_rate
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
         self.epsilon_decay_steps = epsilon_decay_steps
         self.timestep = 0
-        self.model = CNN(env.action_space.n)
-        self.target_model = deepcopy(self.model)
+        self.compute_device = compute_device
+        self.model = CNN(env.action_space.n).to(compute_device)
+        self.target_model = CNN(env.action_space.n).to(compute_device)
+        # copying model state to target_model
+        self.target_model.load_state_dict(self.model.state_dict())
         self.replay_memory = ReplayMemory(replay_size)
+        random.seed = RANDOM_SEED
 
-    def update(
-        self, state: State, action: Action, reward: typing.SupportsFloat, next_state: State
-    ) -> None:
+    def update(self) -> None:
         """
-        You should do your Q-Value update here (s'=next_state):
-           TD_target(s') = r + gamma * max_a' Q(s', a')
-           TD_error(s', a) = TD_target(s') - Q_old(s, a)
-           Q_new(s, a) := Q_old(s, a) + learning_rate * TD_error(s', a)
+        TODO: fix docstring
         """
-        q_value = 0.0
-        target = reward + self.gamma * self.get_value(next_state)
-        error = target - self.get_qvalue(state, action)
-        q_value = self.get_qvalue(state, action) + self.learning_rate * error
+        if len(self.replay_memory) < MINIBATCH_SIZE:
+            return
+        memory_batch: list[Memory] = self.replay_memory.get_sample()
+        batch = Memory(*zip(*memory_batch))
 
-        self.set_qvalue(state, action, q_value)
-        # TODO: update model parameters
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                            batch.new_state)), device=self.compute_device, dtype=torch.bool)
+        non_final_next_states = torch.cat([s for s in batch.new_state
+                                           if s is not None])
+        state_batch = torch.cat(batch.state)
+        action_batch = torch.cat(batch.action)
+        reward_batch = torch.cat(batch.reward)
+
+        state_action_values = self.model.forward(
+            state_batch).gather(1, action_batch)
+
+        next_state_values = torch.zeros(
+            MINIBATCH_SIZE, device=self.compute_device)
+        with torch.no_grad():
+            next_state_values[non_final_mask] = self.target_model.forward(
+                non_final_next_states).max(1).values
+        # Compute the expected Q values
+        expected_state_action_values = (
+            next_state_values * GAMMA) + reward_batch
+
+        self.model.backward(state_action_values, expected_state_action_values)
 
     def get_best_action(self, state: State) -> Action:
         """
         Compute the best action to take in a state (the cnn model).
         """
-        return np.argmax(self.model.forward(state))
-
-    def reset(self):
-        """
-        Reset epsilon to the start value.
-        """
-        self.epsilon = self.epsilon_start
-        self.timestep = 0
+        return self.model.forward(state).max(1).indices.view(1, 1)
 
     def get_action(self, state: State) -> Action:
         """
         Compute the action to take in the current state, including exploration.
-
-        Exploration is done with epsilon-greey. Namely, with probability self.epsilon, we should take a random action, and otherwise the best policy action (self.get_best_action).
-
-        Note: To pick randomly from a list, use random.choice(list).
-              To pick True or False with a given probablity, generate uniform number in [0, 1]
-              and compare it with your probability
         """
         action = self.action_space.sample()
 
-        epsilon = self.epsilon_start - \
-            (self.timestep / self.epsilon_decay_steps) * \
-            (self.epsilon_start - self.epsilon_end)
+        epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
+            exp(-1. * self.timestep / self.epsilon_decay_steps)
+
         if random.random() > epsilon:
             action = self.get_best_action(state)
         if self.timestep < self.epsilon_decay_steps:
@@ -104,23 +106,33 @@ class DQN:
         Trains the model and logs both game_reward and total_reward at the end of training.
         """
         total_reward: typing.SupportsFloat = 0.0
-        state, _ = self.env.reset()
-
+        state, _ = self.env.reset(seed=RANDOM_SEED)
+        state = get_tensor_from_state(state, self.compute_device)
         for _ in range(epochs):
             game_reward: typing.SupportsFloat = 0.0
             for t in range(t_max):
+                print(t)
                 action = self.get_action(state)
-                next_s, reward, done, trunc, _ = self.env.step(action)
-                # Train agent for state s
+                new_state, reward, term, trunc, _ = self.env.step(
+                    action.item())
+                new_state = get_tensor_from_state(
+                    new_state, self.compute_device)
+                # put new state in replay_memory
+                self.replay_memory.update_memory(
+                    state, action, reward, new_state, term or trunc)
 
-                # update Q parameters every UPDATE_FREQUENCY
-                if not t % UPDATE_FREQUENCY:
-                    self.update(s, action, reward, next_s)
-                s = next_s
                 game_reward += reward
-                if done:
-                    s, _ = self.env.reset()
+                self.update()
+
+                # update model every UPDATE_FREQUENCY
+                if not t % UPDATE_FREQUENCY:
+                    self.target_model.load_state_dict(self.model.state_dict())
+
+                if term or trunc:
+                    state, _ = self.env.reset(seed=RANDOM_SEED)
+                    state = get_tensor_from_state(state, self.compute_device)
                     break
+                state = new_state
             total_reward += game_reward
             wandb.log({"game_reward": game_reward})
 

@@ -1,12 +1,16 @@
 from torch import nn
 from torch.optim import RMSprop
-
 from hyperparameters import RMS_ESP, RMS_GRADIENT_MOMENTUM, RMS_LEARNING_RATE
 
-class CNN(nn.Module):
-    def __init__(self, game_inputs=4):
-        super().__init__()
 
+class CNN(nn.Module):
+    """
+    CNN model for DQN implementation
+    """
+
+    def __init__(self, game_inputs=4):
+        super(CNN, self).__init__()
+        
         self.cnn = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=8, stride=4),
             nn.ReLU(inplace=True),
@@ -16,22 +20,32 @@ class CNN(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        self.fc1 = nn.Linear(4 * 4 * 64, 512)
+        self.fc1 = nn.Linear(64 * 16 * 22, 512)
         self.act = nn.ReLU(inplace=True)
         self.fc2 = nn.Linear(512, game_inputs)
-        self.optim = RMSprop(self.cnn.parameters(), lr=RMS_LEARNING_RATE,
+        self.optim = RMSprop(self.parameters(), lr=RMS_LEARNING_RATE,
                              momentum=RMS_GRADIENT_MOMENTUM,
                              eps=RMS_ESP)
-        self.loss_fn = nn.MSELoss()
+        # more stable than mse
+        self.loss_fn = nn.SmoothL1Loss()
 
     def forward(self, x):
+        """
+        Inference function
+        """
         x = self.cnn(x)
         b, c, h, w = x.shape
         x = x.view(b, c * h * w)
-        x = nn.Flatten()
         x = self.act(self.fc1(x))
         x = self.fc2(x)
         return x
-    
-    def train(self, target_model: CNN) -> T:
-        # TODO : implement train function
+
+    def backward(self, preds, expected_values):
+        """
+        Backwards propagation function
+        """
+        loss = self.loss_fn(preds, expected_values)
+        self.optim.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_value_(self.parameters(), 100)
+        self.optim.step()
