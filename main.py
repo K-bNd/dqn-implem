@@ -20,3 +20,5 @@ agent.play_and_train()
 env.close()
 
 wandb.finish()
+
+agent.save_model_state("model.pt")

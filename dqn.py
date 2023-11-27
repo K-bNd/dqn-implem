@@ -101,6 +101,19 @@ class DQN:
 
         return action
 
+    def save_model_state(self, filename) -> None:
+        """
+        Save model state to disk
+        """
+        torch.save(self.model.state_dict(), filename)
+
+    def load_model_state(self, filename) -> None:
+        """
+        Load model state from filename
+        """
+        self.model.load_state_dict(torch.load(filename))
+        self.model.to(self.compute_device)
+
     def play_and_train(self, epochs=MAX_EPOCHS, t_max=MAX_ACTION) -> None:
         """
         Trains the model and logs both game_reward and total_reward at the end of training.
