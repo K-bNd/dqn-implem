@@ -1,7 +1,7 @@
 import random
-import typing
 from math import exp
 import torch
+import numpy as np
 
 from gymnasium import Env
 from hyperparameters import MAX_EPOCHS, MAX_ACTION, REPLAY_SIZE, GAMMA, \
@@ -137,7 +137,7 @@ class DQN:
         state, _ = self.env.reset(seed=RANDOM_SEED)
         state = get_tensor_from_state(state, self.compute_device)
         for epoch in range(epochs):
-            game_reward: typing.SupportsFloat = 0.0
+            game_reward = []
             for t in range(t_max):
                 action = self.get_action(state)
                 new_state, reward, term, trunc, _ = self.env.step(
@@ -148,7 +148,7 @@ class DQN:
                 self.replay_memory.update_memory(
                     state, action, reward, new_state, term or trunc)
 
-                game_reward += reward
+                game_reward.append(reward)
                 self.update()
 
                 if self.soft_update:
@@ -158,8 +158,9 @@ class DQN:
                     self.target_model.load_state_dict(self.model.state_dict())
 
                 if term or trunc:
-                    print(f"epoch: {epoch} / {epochs}, score: {game_reward}")
-                    wandb.log({"game_reward": game_reward})
+                    print(f"epoch: {epoch} / {epochs}, average_score: {np.mean(game_reward)}, total_score: {np.sum(game_reward)}")
+                    wandb.log({"average_game_score": np.mean(game_reward)})
+                    wandb.log({"total_game_score": np.sum(game_reward)})
                     state, _ = self.env.reset(seed=RANDOM_SEED)
                     state = get_tensor_from_state(state, self.compute_device)
                     break
