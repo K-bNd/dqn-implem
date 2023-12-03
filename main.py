@@ -5,7 +5,7 @@ from hyperparameters import MAX_EPOCHS
 from dqn import DQN
 
 
-env = gymnasium.make("ALE/Breakout-v5", render_mode="rgb_array")
+env = gymnasium.make("ALE/Boxing-v5", render_mode="rgb_array")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 agent = DQN(env, compute_device=device)
 
