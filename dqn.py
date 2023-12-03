@@ -5,7 +5,7 @@ import torch
 
 from gymnasium import Env
 from hyperparameters import MAX_EPOCHS, MAX_ACTION, REPLAY_SIZE, GAMMA, \
-    UPDATE_FREQUENCY, RANDOM_SEED, MINIBATCH_SIZE
+    UPDATE_FREQUENCY, RANDOM_SEED, MINIBATCH_SIZE, TAU
 from model import CNN
 from utils import Action, State, Memory, ReplayMemory, get_tensor_from_state
 
@@ -26,6 +26,7 @@ class DQN:
         epsilon_start: float = 1.0,
         epsilon_end: float = 0.1,
         epsilon_decay_steps: int = 10000,
+        soft_update=False
     ):
         """
         DQN Implementation
@@ -45,12 +46,14 @@ class DQN:
         self.target_model = CNN(env.action_space.n).to(compute_device)
         # copying model state to target_model
         self.target_model.load_state_dict(self.model.state_dict())
+        self.target_learning_rate = TAU
+        self.soft_update = soft_update
         self.replay_memory = ReplayMemory(replay_size)
         random.seed = RANDOM_SEED
 
     def update(self) -> None:
         """
-        TODO: fix docstring
+        Update the model weights based on the replay memory
         """
         if len(self.replay_memory) < MINIBATCH_SIZE:
             return
@@ -75,9 +78,22 @@ class DQN:
                 non_final_next_states).max(1).values
         # Compute the expected Q values
         expected_state_action_values = (
-            next_state_values * GAMMA) + reward_batch
+            next_state_values * self.gamma) + reward_batch
 
         self.model.backward(state_action_values, expected_state_action_values)
+
+    def target_update(self) -> None:
+        """
+        Soft update of the target network's weights
+        θ′ ← τ θ + (1 −τ )θ′
+        based on https://arxiv.org/pdf/1509.02971.pdf
+        """
+        target_net_state_dict = self.model.state_dict()
+        policy_net_state_dict = self.target_model.state_dict()
+        for key in policy_net_state_dict:
+            target_net_state_dict[key] = policy_net_state_dict[key]*self.target_learning_rate + \
+                target_net_state_dict[key]*(1-self.target_learning_rate)
+        self.target_model.load_state_dict(target_net_state_dict)
 
     def get_best_action(self, state: State) -> Action:
         """
@@ -135,14 +151,16 @@ class DQN:
                 game_reward += reward
                 self.update()
 
+                if self.soft_update:
+                    self.target_update()
                 # update model every UPDATE_FREQUENCY
-                if not t % UPDATE_FREQUENCY:
+                elif not t % UPDATE_FREQUENCY:
                     self.target_model.load_state_dict(self.model.state_dict())
 
                 if term or trunc:
                     print(f"epoch: {epoch} / {epochs}, score: {game_reward}")
+                    wandb.log({"game_reward": game_reward})
                     state, _ = self.env.reset(seed=RANDOM_SEED)
                     state = get_tensor_from_state(state, self.compute_device)
                     break
                 state = new_state
-            wandb.log({"game_reward": game_reward})

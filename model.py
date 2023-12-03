@@ -12,7 +12,7 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
         
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=8, stride=4),
+            nn.Conv2d(1, 32, kernel_size=8, stride=4),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(inplace=True),
@@ -20,7 +20,7 @@ class CNN(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        self.fc1 = nn.Linear(64 * 16 * 22, 512)
+        self.fc1 = nn.Linear(64 * 7 * 7, 512)
         self.act = nn.ReLU(inplace=True)
         self.fc2 = nn.Linear(512, game_inputs)
         self.optim = RMSprop(self.parameters(), lr=RMS_LEARNING_RATE,
