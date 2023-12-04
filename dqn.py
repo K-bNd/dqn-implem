@@ -4,6 +4,7 @@ import torch
 import numpy as np
 
 from gymnasium import Env
+from gymnasium.utils.save_video import save_video
 from hyperparameters import MAX_EPOCHS, MAX_ACTION, REPLAY_SIZE, GAMMA, \
     UPDATE_FREQUENCY, RANDOM_SEED, MINIBATCH_SIZE, TAU
 from model import CNN
@@ -165,3 +166,29 @@ class DQN:
                     state = get_tensor_from_state(state, self.compute_device)
                     break
                 state = new_state
+                
+    def evaluate(self, t_max=MAX_ACTION) -> list[float]:
+        """
+        Evaluate the model by playing a game without training
+        """
+        state, _ = self.env.reset()
+        state = get_tensor_from_state(state, self.compute_device)
+        game_reward = []
+        for t in range(t_max):
+            action = self.get_best_action(state)
+            new_state, reward, term, trunc, _ = self.env.step(
+                action.item())
+            new_state = get_tensor_from_state(
+                new_state, self.compute_device)
+            game_reward.append(reward)
+            if term or trunc:
+                save_video(
+                    self.env.render(),
+                    "videos",
+                    fps=30)
+                self.env.reset()
+                print(f"lost at step = {t}, average_score: {np.mean(game_reward)}, total_score: {np.sum(game_reward)}")
+                break
+            state = new_state
+        return game_reward
+            
