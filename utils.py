@@ -1,6 +1,5 @@
 import typing
 from collections import namedtuple
-from hyperparameters import REPLAY_SIZE, MINIBATCH_SIZE, RANDOM_SEED
 import numpy as np
 import torch
 import random
@@ -8,8 +7,15 @@ import cv2
 
 Action = int
 State = torch.tensor
-Memory = namedtuple("Memory",
-                    ("state", "action", "reward", "new_state", "done"))
+Memory = namedtuple("Memory", ("state", "action", "reward", "new_state", "done"))
+
+
+class Configuration:
+    """Config class for hyperparameters"""
+
+    def __init__(self, dictionary):
+        for key in dictionary:
+            setattr(self, key, dictionary[key])
 
 
 def preprocess_frame(frame):
@@ -28,12 +34,19 @@ def preprocess_frame(frame):
     return resized_frame
 
 
-def get_tensor_from_state(state: np.ndarray, compute_device=torch.device("cuda")) -> torch.tensor:
+def get_tensor_from_state(
+    state: np.ndarray, compute_device=torch.device("cuda")
+) -> torch.tensor:
     """
     Turn observation_space into a tensor
     """
-    return torch.tensor(
-        preprocess_frame(state), dtype=torch.float32, device=compute_device).unsqueeze(0).reshape(1, 1, 84, 84)
+    return (
+        torch.tensor(
+            preprocess_frame(state), dtype=torch.float32, device=compute_device
+        )
+        .unsqueeze(0)
+        .reshape(1, 1, 84, 84)
+    )
 
 
 class ReplayMemory(object):
@@ -41,11 +54,11 @@ class ReplayMemory(object):
     Store state memory array
     """
 
-    def __init__(self, n=REPLAY_SIZE, minibatch_size=MINIBATCH_SIZE, compute_device=torch.device("cuda")):
-        self.replay_size = n
+    def __init__(self, config: Configuration, compute_device=torch.device("cuda")):
+        self.replay_size = config.replay_size
         self.replay_memory: list[Memory] = []
-        self.minibatch_size = minibatch_size
-        random.seed = RANDOM_SEED
+        self.minibatch_size = config.minibatch_size
+        random.seed = config.random_seed
         self.compute_device = compute_device
 
     def __len__(self):
@@ -57,8 +70,14 @@ class ReplayMemory(object):
         """
         return random.sample(self.replay_memory, self.minibatch_size)
 
-    def update_memory(self, state: State, action: int, reward: typing.SupportsFloat,
-                      new_state: State, done: bool) -> None:
+    def update_memory(
+        self,
+        state: State,
+        action: int,
+        reward: typing.SupportsFloat,
+        new_state: State,
+        done: bool,
+    ) -> None:
         """
         Update memory with new status
         """
@@ -67,6 +86,4 @@ class ReplayMemory(object):
 
         reward = torch.tensor([reward], device=self.compute_device)
         action = torch.tensor([[action]], device=self.compute_device)
-        self.replay_memory.append(
-            Memory(state, action, reward, new_state, done)
-        )
+        self.replay_memory.append(Memory(state, action, reward, new_state, done))

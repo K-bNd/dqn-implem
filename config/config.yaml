@@ -1,0 +1,15 @@
+random_seed: 42
+minibatch_size: 32
+replay_size : 100000
+update_frequency : 10000
+gamma : 0.99
+rms_learning_rate : 2.5e-4
+rms_gradient_momentum : 0.95
+rms_esp : 0.01
+tau : 0.005
+max_epochs : 1000
+epsilon_start: 1.0
+epsilon_end:  0.1
+epsilon_decay_steps: 10000
+# 6 (action per second) * 600 (seconds per game, 10mn of game max) = 3600 actions per game
+max_action : 3600
