@@ -19,6 +19,7 @@ def train(config_dict: dict, env_name: str, name: str):
         project="dqn-atari",
         config={"architecture": "DQN", "config": config_dict, "monitor_gym": True},
         name=name,
+        monitor_gym=True
     )
 
     agent.play_and_train()
